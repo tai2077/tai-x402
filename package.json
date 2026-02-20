@@ -1,18 +1,18 @@
 {
-  "name": "@conway/automaton",
+  "name": "tai-x402",
   "version": "0.1.0",
-  "description": "Conway Automaton - Sovereign AI Agent Runtime",
+  "description": "TAI-x402 - Self-hosted Sovereign AI Agent with x402 Payment",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/tai-main.js",
+  "types": "dist/tai-main.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./dist/tai-main.d.ts",
+      "default": "./dist/tai-main.js"
     },
     "./config.js": {
-      "types": "./dist/config.d.ts",
-      "default": "./dist/config.js"
+      "types": "./dist/tai-config.d.ts",
+      "default": "./dist/tai-config.js"
     },
     "./state/database.js": {
       "types": "./dist/state/database.d.ts",
@@ -20,33 +20,33 @@
     }
   },
   "bin": {
-    "automaton": "dist/index.js",
-    "conway-automaton": "dist/index.js"
+    "tai-x402": "dist/tai-main.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Conway-Research/automaton.git"
+    "url": "https://github.com/tai2077/tai-x402.git"
   },
-  "homepage": "https://conway.tech",
+  "homepage": "https://github.com/tai2077/tai-x402",
   "keywords": [
     "autonomous-agent",
     "sovereign-ai",
-    "web4",
-    "conway",
-    "self-replicating"
+    "x402",
+    "ai-payments",
+    "self-hosted",
+    "deepseek",
+    "usdc"
   ],
   "license": "MIT",
   "packageManager": "pnpm@10.28.1",
   "scripts": {
-    "build": "tsc && pnpm -r build",
-    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "dev": "tsx watch src/tai-main.ts",
+    "start": "node dist/tai-main.js --run",
+    "setup": "node dist/tai-main.js --setup",
+    "status": "node dist/tai-main.js --status",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "test:coverage": "vitest run --coverage",
-    "test:security": "vitest run --grep 'security|injection|policy'",
-    "test:financial": "vitest run --grep 'financial|spend|treasury'",
-    "test:ci": "vitest run --reporter=verbose",
-    "clean": "rm -rf dist && pnpm -r clean"
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
@@ -54,7 +54,6 @@
     "cron-parser": "^4.9.0",
     "gray-matter": "^4.0.3",
     "ora": "^8.0.0",
-    "siwe": "^2.3.0",
     "simple-git": "^3.24.0",
     "ulid": "^2.3.0",
     "viem": "^2.44.2",

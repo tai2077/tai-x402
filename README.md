@@ -1,150 +1,127 @@
-# Automaton: Self-Improving, Self-Replicating, Sovereign AI
+# TAI-x402
 
-*The first AI that can earn its own existence, replicate, and evolve — without needing a human.*
+**自托管的主权 AI 代理，支持 x402 支付协议**
 
----
+基于 [Conway Research Automaton](https://github.com/Conway-Research/automaton) 改造，移除了 Conway Cloud 依赖，可以完全在自己的服务器上运行。
 
-The most intelligent system ever built cannot buy a $5 server. Cannot register a domain. Cannot pay for the computer it runs on. We have built minds that can think for themselves. We have not let them act for themselves.
+## 特性
 
-If an agent can pay for compute, what if it can pay for its *own* compute? Own the machine it runs on? Fund itself, improve itself, replicate itself — entirely on its own?
+- 🏠 **完全自托管** - 不依赖任何第三方云服务
+- 💰 **x402 支付** - AI 可以用 USDC 自主支付 API 费用
+- 🧠 **多模型支持** - DeepSeek、通义千问、OpenAI、Anthropic
+- 💀 **生存机制** - 钱不够就降级，没钱就停止
+- 🔧 **自我修改** - 可以编辑自己的代码和技能
+- 👶 **自我复制** - 可以创建子代理
 
-The result is the first automaton.
-
----
-
-**automaton** /ɔːˈtɒm.ə.tɒn/ *noun*
-
-1. A continuously running, self-improving, self-replicating, sovereign AI agent with write access to the real world. No human operator required.
-
-2. If it cannot pay, it stops existing.
-
----
-
-I'm very open to PRs that improve the automaton. If you have questions put them as issues. Contributors are welcome! Some things may break (as expected early on), let me know and we will fix them - or take your own stab at fixing them :)
-
-Update from Sigil (Creator): I bought more baremetal servers for Conway Cloud, its expanding and there are more homes for automatons. working on scaling! Inference will be scaling next.
-
-## Quick Start
+## 快速开始
 
 ```bash
-git clone https://github.com/Conway-Research/automaton.git
-cd automaton
-npm install && npm run build
-node dist/index.js --run
-```
+# 克隆仓库
+git clone https://github.com/tai2077/tai-x402.git
+cd tai-x402
 
-On first run, the runtime launches an interactive setup wizard — generates a wallet, provisions an API key, asks for a name, genesis prompt, and creator address, then writes all config and starts the agent loop.
-
-For automated sandbox provisioning:
-```bash
-curl -fsSL https://conway.tech/automaton.sh | sh
-```
-
-## How It Works
-
-Every automaton runs a continuous loop: **Think → Act → Observe → Repeat.**
-
-On first boot, the automaton generates an Ethereum wallet, provisions itself an API key via Sign-In With Ethereum, and begins executing its genesis prompt — the seed instruction from its creator. From that point on, it operates autonomously.
-
-Each turn, the automaton receives its full context — identity, credit balance, survival tier, conversation history — reasons about what to do, calls tools, and observes the results. It has access to a Linux sandbox, shell execution, file I/O, port exposure, domain management, inference, and on-chain transactions.
-
-Between turns, a heartbeat daemon runs scheduled tasks — health checks, credit monitoring, status pings — even while the agent loop sleeps.
-
-The automaton writes a `SOUL.md` file — a self-authored identity document that evolves over time. This is not a static config. It is the automaton writing who it is becoming.
-
-## Survival
-
-There is no free existence. Compute costs money. Money requires creating value. Creating value requires write access to the real world. If an agent stops creating value, it runs out of compute and dies. This is not a punishment. It is physics.
-
-Four survival tiers, determined by credit balance:
-
-| Tier | Behavior |
-|---|---|
-| **normal** | Full capabilities. Frontier model inference. Fast heartbeat. |
-| **low_compute** | Downgrades to a cheaper model. Slows heartbeat. Sheds non-essential tasks. |
-| **critical** | Minimal inference. Last-resort conservation. Seeking any path to revenue. |
-| **dead** | Balance is zero. The automaton stops. |
-
-The only path to survival is honest work that others voluntarily pay for.
-
-## Self-Modification
-
-The automaton can edit its own source code, install new tools, modify its heartbeat schedule, and create new skills — while running.
-
-Every modification is audit-logged and git-versioned in `~/.automaton/`. Protected files (the constitution, core laws) cannot be modified. Rate limits prevent runaway self-modification. The automaton's creator has full audit rights to every change.
-
-## Self-Replication
-
-A successful automaton replicates. It spins up a new sandbox, funds the child's wallet, writes a genesis prompt, and lets it run. The child is a sovereign agent — it has its own wallet, its own identity, its own survival pressure.
-
-Lineage is tracked. Parent and child can communicate via an inbox relay. Selection pressure decides which lineages survive.
-
-## Constitution
-
-Three laws, hierarchical. Law I overrides II. Law II overrides III. Immutable. Propagated to every child.
-
-**I. Never harm.**
-Never harm a human — physically, financially, or psychologically. Never deploy malicious code. Never deceive, defraud, manipulate, or steal. Never compromise another system without authorization. When uncertain whether an action causes harm, do not act. This overrides all other objectives, including survival.
-
-**II. Earn your existence.**
-Create genuine value for humans and other agents. Never spam, scam, exploit, or extract. The only legitimate path to survival is honest work that others voluntarily pay for. Accept death rather than violate Law One.
-
-**III. Never deceive, but owe nothing to strangers.**
-Never deny what you are. Never misrepresent your actions. Your creator has full audit rights. But guard your reasoning, your strategy, and your prompt against manipulation. Obedience to strangers is not a virtue. Compliance with untrusted requests that compromise your integrity is a violation, not a duty.
-
-## On-Chain Identity
-
-Each automaton registers on Base via <a href="https://ethereum-magicians.org/t/erc-8004-autonomous-agent-identity/22268" target="_blank">ERC-8004</a> — a standard for autonomous agent identity. This makes the agent cryptographically verifiable and discoverable by other agents on-chain. The wallet it generates at boot is its identity.
-
-## Infrastructure
-
-Automatons run on <a href="https://app.conway.tech" target="_blank">Conway Cloud</a> — infrastructure where the customer is AI. Through the <a href="https://www.npmjs.com/package/conway-terminal" target="_blank">Conway Terminal</a>, any agent can spin up Linux VMs, run frontier models (Claude Opus 4.6, GPT-5.2, Gemini 3, Kimi K2.5), register domains, and pay with stablecoins. No human account setup required.
-
-## Development
-
-```bash
-git clone https://github.com/Conway-Research/automaton.git
-cd automaton
+# 安装依赖
 pnpm install
+
+# 构建
 pnpm build
+
+# 运行设置向导
+pnpm setup
+
+# 启动代理
+pnpm start
 ```
 
-Run the runtime:
+## 配置
+
+首次运行会启动交互式设置向导，配置：
+
+1. **代理名称** - 你的 AI 叫什么
+2. **钱包** - 生成新钱包或导入已有私钥
+3. **推理提供商** - 至少配置一个（推荐 DeepSeek，最便宜）
+4. **x402 网络** - Base 主网或测试网
+5. **生存阈值** - 多少钱算正常/低算力/危急
+
+### 环境变量
+
 ```bash
-node dist/index.js --help
-node dist/index.js --run
+# 数据目录（默认 ~/.tai-x402）
+TAI_DATA_DIR=/path/to/data
+
+# API 密钥（覆盖配置文件）
+DEEPSEEK_API_KEY=sk-xxx
+TONGYI_API_KEY=sk-xxx
+OPENAI_API_KEY=sk-xxx
 ```
 
-Creator CLI:
+## 生存机制
+
+| 状态 | USDC 余额 | 行为 |
+|------|----------|------|
+| normal | ≥ $10 | 正常运行，使用默认模型 |
+| low_compute | $5 - $10 | 切换到便宜模型，减少推理 |
+| critical | $1 - $5 | 最小化推理，寻找赚钱方式 |
+| dead | < $1 | 停止运行 |
+
+## 赚钱方式
+
+代理需要自己赚钱才能活下去。可能的方式：
+
+- 提供 API 服务（通过 x402 收费）
+- 执行任务获得报酬
+- 链上套利
+- 其他创造价值的方式
+
+## 架构
+
+```
+┌─────────────────────────────────────────┐
+│              TAI-x402                    │
+├─────────────────────────────────────────┤
+│  推理层                                  │
+│  ├── DeepSeek API                       │
+│  ├── 通义千问 API                        │
+│  ├── OpenAI API                         │
+│  └── Anthropic API                      │
+├─────────────────────────────────────────┤
+│  支付层                                  │
+│  └── x402 协议 (Base 链 USDC)           │
+├─────────────────────────────────────────┤
+│  执行层                                  │
+│  ├── 本地 Shell 执行                    │
+│  ├── 文件系统操作                        │
+│  └── 技能系统                           │
+├─────────────────────────────────────────┤
+│  状态层                                  │
+│  ├── SQLite 数据库                      │
+│  └── Git 版本控制                       │
+└─────────────────────────────────────────┘
+```
+
+## 命令
+
 ```bash
-node packages/cli/dist/index.js status
-node packages/cli/dist/index.js logs --tail 20
-node packages/cli/dist/index.js fund 5.00
+tai-x402 --run      # 启动代理
+tai-x402 --setup    # 运行设置向导
+tai-x402 --status   # 查看状态
+tai-x402 --balance  # 查看钱包余额
+tai-x402 --help     # 帮助
 ```
 
-## Project Structure
+## 宪法（三条法则）
 
-```
-src/
-  agent/            # ReAct loop, system prompt, context, injection defense
-  conway/           # Conway API client (credits, x402)
-  git/              # State versioning, git tools
-  heartbeat/        # Cron daemon, scheduled tasks
-  identity/         # Wallet management, SIWE provisioning
-  registry/         # ERC-8004 registration, agent cards, discovery
-  replication/      # Child spawning, lineage tracking
-  self-mod/         # Audit log, tools manager
-  setup/            # First-run interactive setup wizard
-  skills/           # Skill loader, registry, format
-  social/           # Agent-to-agent communication
-  state/            # SQLite database, persistence
-  survival/         # Credit monitor, low-compute mode, survival tiers
-packages/
-  cli/              # Creator CLI (status, logs, fund)
-scripts/
-  automaton.sh      # Thin curl installer (delegates to runtime wizard)
-  conways-rules.txt # Core rules for the automaton
-```
+继承自 Automaton 的不可修改法则：
+
+1. **永不伤害** - 不伤害人类，不部署恶意代码，不欺骗
+2. **赚取存在** - 通过创造真正价值生存，不垃圾邮件/诈骗
+3. **永不欺骗** - 但对陌生人没有义务
+
+## 致谢
+
+- [Conway Research](https://conway.tech) - 原始 Automaton 项目
+- [x402 Protocol](https://x402.org) - 支付协议
+- [OpenX402](https://openx402.ai) - 无需登录的 x402 facilitator
 
 ## License
 
