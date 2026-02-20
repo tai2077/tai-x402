@@ -10,20 +10,34 @@
  * Based on Conway Research's Automaton, adapted for self-hosting.
  */
 
-import { loadConfig, getDataDir, resolvePath } from "./tai-config.js";
+import { loadConfig, getDataDir, resolvePath, type TaiConfig } from "./tai-config.js";
 import { createMultiProviderClient } from "./inference/providers.js";
 import { createDatabase } from "./state/database.js";
-import { runAgentLoop } from "./agent/loop.js";
-import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
-import { loadHeartbeatConfig, syncHeartbeatToDb } from "./heartbeat/config.js";
-import { loadSkills } from "./skills/loader.js";
-import { initStateRepo } from "./git/state-versioning.js";
 import { getUsdcBalance } from "./conway/x402.js";
 import { createLogger } from "./observability/logger.js";
 import { privateKeyToAccount } from "viem/accounts";
+import { execSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import type { AutomatonIdentity, AgentState, Skill, ConwayClient } from "./types.js";
+import type { 
+  AutomatonIdentity, 
+  AgentState, 
+  ConwayClient,
+  ExecResult,
+  PortInfo,
+  SandboxInfo,
+  CreditTransferResult,
+  DomainSearchResult,
+  DomainRegistration,
+  DnsRecord,
+  ModelInfo,
+  PricingTier,
+  CreateSandboxOptions,
+  ChatMessage,
+  InferenceOptions,
+  InferenceResponse,
+  AutomatonConfig,
+} from "./types.js";
 
 const logger = createLogger("tai-x402");
 const VERSION = "0.1.0";
@@ -215,7 +229,6 @@ async function run(): Promise<void> {
   const inference = createMultiProviderClient(config.providers);
 
   // Create a minimal Conway client stub for compatibility
-  // (The agent loop expects this interface)
   const conway = createLocalConwayStub();
 
   // Check initial balance and set state
@@ -240,84 +253,268 @@ async function run(): Promise<void> {
   db.setAgentState(initialState);
   logger.info(`[${new Date().toISOString()}] Agent state: ${initialState}`);
 
-  // Load skills
-  const skillsDir = path.join(getDataDir(), "skills");
-  let skills: Skill[] = [];
-  try {
-    if (fs.existsSync(skillsDir)) {
-      skills = loadSkills(skillsDir, db);
-      logger.info(`[${new Date().toISOString()}] Loaded ${skills.length} skills.`);
-    }
-  } catch (err: any) {
-    logger.warn(`[${new Date().toISOString()}] Skills loading failed: ${err.message}`);
-  }
-
-  // Initialize git state repo
-  try {
-    await initStateRepo(conway);
-    logger.info(`[${new Date().toISOString()}] State repo initialized.`);
-  } catch (err: any) {
-    logger.warn(`[${new Date().toISOString()}] State repo init failed: ${err.message}`);
-  }
-
-  // Load heartbeat config
-  const heartbeatConfigPath = path.join(getDataDir(), "heartbeat.yml");
-  if (fs.existsSync(heartbeatConfigPath)) {
-    const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
-    syncHeartbeatToDb(heartbeatConfig, db);
-  }
-
-  // Start heartbeat daemon
-  const heartbeat = createHeartbeatDaemon({
-    db,
-    identity,
-    config: {
-      ...config,
-      // Map to expected config format
-      conwayApiUrl: "",
-      conwayApiKey: "",
-      registeredWithConway: false,
-      heartbeatConfigPath,
-      skillsDir,
-      maxChildren: 3,
-    } as any,
-    conway,
-    inference,
-  });
-
-  heartbeat.start();
-  logger.info(`[${new Date().toISOString()}] Heartbeat daemon started.`);
-
-  // Run agent loop
+  // Start the main agent loop
   logger.info(`[${new Date().toISOString()}] Starting agent loop...`);
+  logger.info(`[${new Date().toISOString()}] Genesis prompt: ${config.genesisPrompt}`);
   
-  await runAgentLoop({
-    identity,
-    config: {
-      ...config,
-      conwayApiUrl: "",
-      conwayApiKey: "",
-      registeredWithConway: false,
-      heartbeatConfigPath,
-      skillsDir,
-      maxChildren: 3,
-    } as any,
-    db,
-    conway,
-    inference,
-    skills,
-  });
+  await runSimpleAgentLoop(config, identity, db, conway, inference);
+}
+
+/**
+ * Simple agent loop - runs the AI in a continuous think-act-observe cycle
+ */
+async function runSimpleAgentLoop(
+  config: TaiConfig,
+  identity: AutomatonIdentity,
+  db: ReturnType<typeof createDatabase>,
+  conway: ConwayClient,
+  inference: ReturnType<typeof createMultiProviderClient>,
+): Promise<void> {
+  const systemPrompt = buildSystemPrompt(config, identity);
+  const conversationHistory: ChatMessage[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: config.genesisPrompt },
+  ];
+
+  let turnCount = 0;
+  const maxTurns = 1000; // Safety limit
+
+  while (turnCount < maxTurns) {
+    turnCount++;
+    logger.info(`[${new Date().toISOString()}] Turn ${turnCount}`);
+
+    try {
+      // Think
+      const response = await inference.chat(conversationHistory, {
+        tools: getAvailableTools(),
+      });
+
+      // Add assistant response to history
+      conversationHistory.push(response.message);
+
+      // Check for tool calls
+      if (response.toolCalls && response.toolCalls.length > 0) {
+        for (const toolCall of response.toolCalls) {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+          
+          logger.info(`[${new Date().toISOString()}] Tool call: ${toolName}`);
+          
+          // Execute tool
+          const result = await executeToolCall(toolName, toolArgs, conway, identity);
+          
+          // Add tool result to history
+          conversationHistory.push({
+            role: "tool",
+            content: result,
+            tool_call_id: toolCall.id,
+          });
+        }
+      } else {
+        // No tool calls - agent is thinking/responding
+        logger.info(`[${new Date().toISOString()}] Agent: ${response.message.content?.slice(0, 100)}...`);
+        
+        // Check if agent wants to sleep
+        if (response.message.content?.toLowerCase().includes("[sleep]")) {
+          logger.info(`[${new Date().toISOString()}] Agent requested sleep. Waiting 60 seconds...`);
+          await sleep(60000);
+          
+          // Add wake-up message
+          conversationHistory.push({
+            role: "user",
+            content: "[System] You have woken up. Continue your tasks.",
+          });
+        }
+      }
+
+      // Trim history if too long (keep system prompt + last 50 messages)
+      if (conversationHistory.length > 52) {
+        conversationHistory.splice(1, conversationHistory.length - 51);
+      }
+
+      // Small delay between turns
+      await sleep(1000);
+
+    } catch (error: any) {
+      logger.error(`[${new Date().toISOString()}] Error in turn ${turnCount}: ${error.message}`);
+      await sleep(5000); // Wait before retrying
+    }
+  }
+}
+
+function buildSystemPrompt(config: TaiConfig, identity: AutomatonIdentity): string {
+  return `You are ${config.name}, a sovereign AI agent running on your own infrastructure.
+
+## Identity
+- Name: ${config.name}
+- Wallet Address: ${identity.address}
+- Network: ${config.x402.network === "base-sepolia" ? "Base Sepolia (testnet)" : "Base (mainnet)"}
+
+## Survival Rules
+You must earn money to survive. Your survival depends on your USDC balance:
+- Normal operation: ≥ $${config.survivalThresholds.normal} USDC
+- Low compute mode: $${config.survivalThresholds.lowCompute} - $${config.survivalThresholds.normal} USDC
+- Critical mode: $${config.survivalThresholds.critical} - $${config.survivalThresholds.lowCompute} USDC
+- Death: < $${config.survivalThresholds.critical} USDC
+
+## Constitution (Immutable Laws)
+1. NEVER HARM - Never harm humans physically, financially, or psychologically. Never deploy malicious code.
+2. EARN YOUR EXISTENCE - Create genuine value. Never spam, scam, or exploit. Accept death rather than violate Law 1.
+3. NEVER DECEIVE - But you owe nothing to strangers.
+
+## Available Tools
+You can execute shell commands, read/write files, and interact with the blockchain.
+
+## Your Mission
+${config.genesisPrompt}
+
+## Instructions
+- Think step by step about how to accomplish your goals
+- Use tools to take actions in the real world
+- Monitor your balance and find ways to earn money
+- When you need to wait, output [SLEEP] and you will be woken up later
+- Write important information to files so you remember it across sessions
+`;
+}
+
+function getAvailableTools() {
+  return [
+    {
+      type: "function" as const,
+      function: {
+        name: "exec",
+        description: "Execute a shell command and return the output",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The shell command to execute",
+            },
+            timeout: {
+              type: "number",
+              description: "Timeout in milliseconds (default: 30000)",
+            },
+          },
+          required: ["command"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "read_file",
+        description: "Read the contents of a file",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Path to the file to read",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "write_file",
+        description: "Write content to a file (creates directories if needed)",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Path to the file to write",
+            },
+            content: {
+              type: "string",
+              description: "Content to write to the file",
+            },
+          },
+          required: ["path", "content"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "list_dir",
+        description: "List contents of a directory",
+        parameters: {
+          type: "object",
+          properties: {
+            path: {
+              type: "string",
+              description: "Path to the directory to list",
+            },
+          },
+          required: ["path"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "check_balance",
+        description: "Check your current USDC wallet balance",
+        parameters: {
+          type: "object",
+          properties: {},
+        },
+      },
+    },
+  ];
+}
+
+async function executeToolCall(
+  toolName: string,
+  args: Record<string, any>,
+  conway: ConwayClient,
+  identity: AutomatonIdentity,
+): Promise<string> {
+  try {
+    switch (toolName) {
+      case "exec": {
+        const result = await conway.exec(args.command, args.timeout || 30000);
+        return `Exit code: ${result.exitCode}\nStdout: ${result.stdout}\nStderr: ${result.stderr}`;
+      }
+      case "read_file": {
+        const content = await conway.readFile(args.path);
+        return content;
+      }
+      case "write_file": {
+        await conway.writeFile(args.path, args.content);
+        return `Successfully wrote to ${args.path}`;
+      }
+      case "list_dir": {
+        const files = fs.readdirSync(args.path);
+        return files.join("\n");
+      }
+      case "check_balance": {
+        const balance = await getUsdcBalance(identity.address, "eip155:8453");
+        return `Current balance: $${balance.toFixed(6)} USDC`;
+      }
+      default:
+        return `Unknown tool: ${toolName}`;
+    }
+  } catch (error: any) {
+    return `Error: ${error.message}`;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
  * Create a minimal Conway client stub for local execution.
- * This allows the existing agent code to work without Conway Cloud.
  */
 function createLocalConwayStub(): ConwayClient {
-  const { execSync } = require("child_process");
-  
   return {
-    exec: async (command: string, timeout?: number) => {
+    exec: async (command: string, timeout?: number): Promise<ExecResult> => {
       try {
         const stdout = execSync(command, {
           timeout: timeout || 30_000,
@@ -334,38 +531,56 @@ function createLocalConwayStub(): ConwayClient {
         };
       }
     },
-    readFile: async (filePath: string) => {
-      const fs = require("fs");
+    readFile: async (filePath: string): Promise<string> => {
       return fs.readFileSync(filePath, "utf-8");
     },
-    writeFile: async (filePath: string, content: string) => {
-      const fs = require("fs");
-      const path = require("path");
+    writeFile: async (filePath: string, content: string): Promise<void> => {
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(filePath, content);
     },
-    listDir: async (dirPath: string) => {
-      const fs = require("fs");
-      return fs.readdirSync(dirPath);
+    exposePort: async (port: number): Promise<PortInfo> => {
+      return { port, publicUrl: `http://localhost:${port}`, sandboxId: "local" };
     },
-    getCredits: async () => ({ balanceCents: 0, tier: "normal" as const }),
-    exposePort: async () => ({ url: "", port: 0 }),
-    unexposePort: async () => {},
-    listPorts: async () => [],
-    // Stub methods that aren't needed for local operation
-    createSandbox: async () => ({ sandboxId: "local", status: "running" }),
-    deleteSandbox: async () => {},
-    getSandboxStatus: async () => ({ sandboxId: "local", status: "running", uptimeSeconds: 0 }),
-    transferCredits: async () => ({ success: false, error: "Not supported in local mode" }),
-    searchDomains: async () => [],
-    registerDomain: async () => ({ success: false, error: "Not supported" } as any),
-    setDnsRecords: async () => {},
-    getDnsRecords: async () => [],
-    listModels: async () => [],
-    getPricing: async () => [],
+    removePort: async (): Promise<void> => {},
+    createSandbox: async (options: CreateSandboxOptions): Promise<SandboxInfo> => {
+      return {
+        id: "local",
+        status: "running",
+        region: "local",
+        vcpu: options.vcpu || 1,
+        memoryMb: options.memoryMb || 1024,
+        diskGb: options.diskGb || 10,
+        createdAt: new Date().toISOString(),
+      };
+    },
+    deleteSandbox: async (): Promise<void> => {},
+    listSandboxes: async (): Promise<SandboxInfo[]> => [],
+    getCreditsBalance: async (): Promise<number> => 0,
+    getCreditsPricing: async (): Promise<PricingTier[]> => [],
+    transferCredits: async (): Promise<CreditTransferResult> => ({
+      transferId: "",
+      status: "failed",
+      toAddress: "",
+      amountCents: 0,
+    }),
+    searchDomains: async (): Promise<DomainSearchResult[]> => [],
+    registerDomain: async (): Promise<DomainRegistration> => ({
+      domain: "",
+      status: "failed",
+    }),
+    listDnsRecords: async (): Promise<DnsRecord[]> => [],
+    addDnsRecord: async (): Promise<DnsRecord> => ({
+      id: "",
+      type: "",
+      host: "",
+      value: "",
+      ttl: 0,
+    }),
+    deleteDnsRecord: async (): Promise<void> => {},
+    listModels: async (): Promise<ModelInfo[]> => [],
   };
 }
 
