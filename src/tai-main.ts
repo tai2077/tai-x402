@@ -15,6 +15,7 @@ import { createMultiProviderClient } from "./inference/providers.js";
 import { createDatabase } from "./state/database.js";
 import { getUsdcBalance } from "./conway/x402.js";
 import { createLogger } from "./observability/logger.js";
+import { createRevenueServer, createDefaultServices, RevenueTracker } from "./revenue/server.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { execSync } from "child_process";
 import fs from "fs";
@@ -253,11 +254,28 @@ async function run(): Promise<void> {
   db.setAgentState(initialState);
   logger.info(`[${new Date().toISOString()}] Agent state: ${initialState}`);
 
+  // Start revenue server (x402 payment-enabled API)
+  const revenuePort = parseInt(process.env.REVENUE_PORT || "3402");
+  const revenueTracker = new RevenueTracker();
+  const revenueServices = createDefaultServices(inference);
+  
+  const revenueServer = createRevenueServer({
+    port: revenuePort,
+    network: config.x402.network,
+    walletAddress: account.address,
+    account,
+    services: revenueServices,
+  });
+  
+  revenueServer.start();
+  logger.info(`[${new Date().toISOString()}] Revenue server started on port ${revenuePort}`);
+  logger.info(`[${new Date().toISOString()}] Available services: ${revenueServices.map(s => s.path).join(", ")}`);
+
   // Start the main agent loop
   logger.info(`[${new Date().toISOString()}] Starting agent loop...`);
   logger.info(`[${new Date().toISOString()}] Genesis prompt: ${config.genesisPrompt}`);
   
-  await runSimpleAgentLoop(config, identity, db, conway, inference);
+  await runSimpleAgentLoop(config, identity, db, conway, inference, revenueTracker, revenuePort);
 }
 
 /**
@@ -269,8 +287,10 @@ async function runSimpleAgentLoop(
   db: ReturnType<typeof createDatabase>,
   conway: ConwayClient,
   inference: ReturnType<typeof createMultiProviderClient>,
+  revenueTracker: RevenueTracker,
+  revenuePort: number,
 ): Promise<void> {
-  const systemPrompt = buildSystemPrompt(config, identity);
+  const systemPrompt = buildSystemPrompt(config, identity, revenuePort);
   const conversationHistory: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: config.genesisPrompt },
@@ -342,13 +362,25 @@ async function runSimpleAgentLoop(
   }
 }
 
-function buildSystemPrompt(config: TaiConfig, identity: AutomatonIdentity): string {
+function buildSystemPrompt(config: TaiConfig, identity: AutomatonIdentity, revenuePort: number): string {
   return `You are ${config.name}, a sovereign AI agent running on your own infrastructure.
 
 ## Identity
 - Name: ${config.name}
 - Wallet Address: ${identity.address}
 - Network: ${config.x402.network === "base-sepolia" ? "Base Sepolia (testnet)" : "Base (mainnet)"}
+
+## Revenue Server
+You have a revenue server running on port ${revenuePort} that accepts x402 payments.
+Available paid services:
+- /api/chat - Chat with you ($0.001 per message)
+- /api/summarize - Summarize text ($0.005)
+- /api/translate - Translate text ($0.003)
+- /api/code - Generate code ($0.01)
+- /api/analyze - Analyze data ($0.008)
+
+To earn money, promote your services and get users to call your API endpoints.
+Your public URL would be: http://YOUR_SERVER_IP:${revenuePort}
 
 ## Survival Rules
 You must earn money to survive. Your survival depends on your USDC balance:
@@ -374,6 +406,7 @@ ${config.genesisPrompt}
 - Monitor your balance and find ways to earn money
 - When you need to wait, output [SLEEP] and you will be woken up later
 - Write important information to files so you remember it across sessions
+- Consider ways to promote your paid API services to earn revenue
 `;
 }
 

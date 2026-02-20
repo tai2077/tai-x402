@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  tai-x402:
+    build: .
+    container_name: tai-x402
+    restart: unless-stopped
+    ports:
+      - "3402:3402"
+    volumes:
+      - tai-data:/data
+    environment:
+      - TAI_DATA_DIR=/data
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+      - TONGYI_API_KEY=${TONGYI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REVENUE_PORT=3402
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3402/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  tai-data:
