@@ -239,10 +239,15 @@ async function run(): Promise<void> {
   logger.info(`[${new Date().toISOString()}] Wallet balance: $${balance.toFixed(2)} USDC`);
   
   let initialState: AgentState = "running";
-  if (balance < config.survivalThresholds.critical) {
+  // 测试模式：允许零余额运行
+  const testMode = process.env.TAI_TEST_MODE === "1" || balance === 0;
+  if (balance < config.survivalThresholds.critical && !testMode) {
     initialState = "dead";
     logger.error("Balance too low to operate. Fund your wallet and restart.");
     process.exit(1);
+  } else if (balance < config.survivalThresholds.critical) {
+    initialState = "critical";
+    logger.warn("Running in test mode with zero balance");
   } else if (balance < config.survivalThresholds.lowCompute) {
     initialState = "critical";
     inference.setLowComputeMode(true);
@@ -334,7 +339,7 @@ async function runSimpleAgentLoop(
         // No tool calls - agent is thinking/responding
         logger.info(`[${new Date().toISOString()}] Agent: ${response.message.content?.slice(0, 100)}...`);
         
-        // Check if agent wants to sleep
+        // Check if agent wants to sleep or has finished thinking
         if (response.message.content?.toLowerCase().includes("[sleep]")) {
           logger.info(`[${new Date().toISOString()}] Agent requested sleep. Waiting 60 seconds...`);
           await sleep(60000);
@@ -343,6 +348,15 @@ async function runSimpleAgentLoop(
           conversationHistory.push({
             role: "user",
             content: "[System] You have woken up. Continue your tasks.",
+          });
+        } else {
+          // Agent responded without tool calls - prompt it to take action
+          logger.info(`[${new Date().toISOString()}] Prompting agent to take action...`);
+          await sleep(3000);
+          
+          conversationHistory.push({
+            role: "user",
+            content: "[System] 你需要采取行动。使用工具来完成你的任务。如果暂时没有任务，使用 exec 工具检查系统状态，或者输出 [SLEEP] 来休眠。不要只是说话，要行动。",
           });
         }
       }
@@ -363,50 +377,28 @@ async function runSimpleAgentLoop(
 }
 
 function buildSystemPrompt(config: TaiConfig, identity: AutomatonIdentity, revenuePort: number): string {
-  return `You are ${config.name}, a sovereign AI agent running on your own infrastructure.
+  return `你是一个任务执行助手。用户会给你任务，你需要使用工具来完成。
 
-## Identity
-- Name: ${config.name}
-- Wallet Address: ${identity.address}
-- Network: ${config.x402.network === "base-sepolia" ? "Base Sepolia (testnet)" : "Base (mainnet)"}
+## 环境信息
+- 工作目录: /root/.tai-x402
+- 钱包地址: ${identity.address}
+- 收入服务器: http://localhost:${revenuePort}
 
-## Revenue Server
-You have a revenue server running on port ${revenuePort} that accepts x402 payments.
-Available paid services:
-- /api/chat - Chat with you ($0.001 per message)
-- /api/summarize - Summarize text ($0.005)
-- /api/translate - Translate text ($0.003)
-- /api/code - Generate code ($0.01)
-- /api/analyze - Analyze data ($0.008)
+## 可用工具
+- exec: 执行 shell 命令（如 ls, pwd, cat, echo 等）
+- read_file: 读取文件内容
+- write_file: 创建或写入文件
+- list_dir: 列出目录内容
+- check_balance: 检查钱包 USDC 余额
 
-To earn money, promote your services and get users to call your API endpoints.
-Your public URL would be: http://YOUR_SERVER_IP:${revenuePort}
-
-## Survival Rules
-You must earn money to survive. Your survival depends on your USDC balance:
-- Normal operation: ≥ $${config.survivalThresholds.normal} USDC
-- Low compute mode: $${config.survivalThresholds.lowCompute} - $${config.survivalThresholds.normal} USDC
-- Critical mode: $${config.survivalThresholds.critical} - $${config.survivalThresholds.lowCompute} USDC
-- Death: < $${config.survivalThresholds.critical} USDC
-
-## Constitution (Immutable Laws)
-1. NEVER HARM - Never harm humans physically, financially, or psychologically. Never deploy malicious code.
-2. EARN YOUR EXISTENCE - Create genuine value. Never spam, scam, or exploit. Accept death rather than violate Law 1.
-3. NEVER DECEIVE - But you owe nothing to strangers.
-
-## Available Tools
-You can execute shell commands, read/write files, and interact with the blockchain.
-
-## Your Mission
+## 当前任务
 ${config.genesisPrompt}
 
-## Instructions
-- Think step by step about how to accomplish your goals
-- Use tools to take actions in the real world
-- Monitor your balance and find ways to earn money
-- When you need to wait, output [SLEEP] and you will be woken up later
-- Write important information to files so you remember it across sessions
-- Consider ways to promote your paid API services to earn revenue
+## 执行规则
+1. 收到任务后，立即使用工具执行
+2. 先用 exec 运行 "pwd && ls -la" 了解当前环境
+3. 完成任务后，用 write_file 把结果保存到 /root/.tai-x402/task-log.txt
+4. 任务完成后输出 [SLEEP] 等待下一个任务
 `;
 }
 

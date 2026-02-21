@@ -27,6 +27,7 @@ export interface ProviderConfig {
   apiKey: string;
   defaultModel: string;
   maxTokens?: number;
+  apiType?: "openai" | "anthropic";  // API 类型，用于代理服务
 }
 
 export interface InferenceProviders {
@@ -83,7 +84,8 @@ export function createMultiProviderClient(providers: InferenceProviders) {
     const model = opts?.model || currentModel;
     const provider = resolveProvider(model, providers) || currentProvider;
 
-    if (provider.name === "anthropic") {
+    // 支持 Anthropic API 类型（包括代理服务如 yunyi-claude）
+    if (provider.name === "anthropic" || provider.apiType === "anthropic") {
       return chatViaAnthropic({
         model,
         tokenLimit: opts?.maxTokens || maxTokens,
@@ -91,6 +93,7 @@ export function createMultiProviderClient(providers: InferenceProviders) {
         tools: opts?.tools,
         temperature: opts?.temperature,
         apiKey: provider.apiKey,
+        apiUrl: provider.apiUrl,  // 支持自定义 API URL
         httpClient,
       });
     }
@@ -239,6 +242,7 @@ async function chatViaAnthropic(params: {
   tools?: InferenceToolDefinition[];
   temperature?: number;
   apiKey: string;
+  apiUrl?: string;  // 支持自定义 API URL（代理服务）
   httpClient: ResilientHttpClient;
 }): Promise<InferenceResponse> {
   // Extract system message
@@ -278,7 +282,11 @@ async function chatViaAnthropic(params: {
     }));
   }
 
-  const resp = await params.httpClient.request("https://api.anthropic.com/v1/messages", {
+  // 使用自定义 API URL 或默认 Anthropic API
+  const apiUrl = params.apiUrl || "https://api.anthropic.com";
+  const endpoint = apiUrl.endsWith("/v1/messages") ? apiUrl : `${apiUrl}/v1/messages`;
+
+  const resp = await params.httpClient.request(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
