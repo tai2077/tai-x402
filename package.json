@@ -20,7 +20,8 @@
     }
   },
   "bin": {
-    "tai-x402": "dist/tai-main.js"
+    "tai-x402": "dist/tai-main.js",
+    "tai-feishu": "dist/feishu-main.js"
   },
   "repository": {
     "type": "git",
@@ -46,7 +47,8 @@
     "status": "node dist/tai-main.js --status",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "feishu": "node dist/feishu-main.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",
