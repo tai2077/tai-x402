@@ -74,10 +74,10 @@ export class MessageHandler {
     if (lowerContent === "记录" || lowerContent === "history" || lowerContent === "账单") {
       const transactions = this.userSystem.getTransactions(userId, 10);
       if (transactions.length === 0) {
-        return "暂无交易记录";
+        return "暂无消费记录";
       }
       
-      let text = "📋 最近交易记录:\n\n";
+      let text = "📋 最近消费记录:\n\n";
       for (const tx of transactions) {
         const sign = tx.amount >= 0 ? "+" : "";
         const time = tx.createdAt.slice(5, 16).replace("T", " ");
@@ -86,27 +86,9 @@ export class MessageHandler {
       return text;
     }
 
-    // 行情查询
-    const marketMatch = content.match(/^(行情|价格|price)\s*(\w+)?$/i);
-    if (marketMatch) {
-      const token = marketMatch[2]?.toUpperCase() || "BTC";
-      return await this.getTokenPrice(token);
-    }
-
-    // 买入
-    const buyMatch = content.match(/^买\s*([\d.]+)\s*(\w+)$/i);
-    if (buyMatch) {
-      const amount = parseFloat(buyMatch[1]);
-      const token = buyMatch[2].toUpperCase();
-      return await this.handleBuy(userId, token, amount);
-    }
-
-    // 卖出
-    const sellMatch = content.match(/^卖\s*([\d.]+)\s*(\w+)$/i);
-    if (sellMatch) {
-      const amount = parseFloat(sellMatch[1]);
-      const token = sellMatch[2].toUpperCase();
-      return await this.handleSell(userId, token, amount);
+    // 充值引导
+    if (lowerContent === "充值" || lowerContent === "recharge" || lowerContent === "买积分") {
+      return `💰 积分充值\n\n请访问官网完成充值:\n🔗 https://tai-x402.example.com/recharge\n\n充值后积分将自动到账。`;
     }
 
     // 不是命令，返回 null 让 AI 处理
@@ -131,11 +113,12 @@ export class MessageHandler {
       history.push({
         role: "system",
         content: `你是 TAI，一个友好的 AI 助手。你可以帮助用户：
-- 回答问题和闲聊
-- 查询加密货币行情
-- 协助进行交易操作
+- 回答各种问题
+- 闲聊和陪伴
+- 提供建议和帮助
 
-保持回复简洁友好，使用中文。如果用户想要交易，引导他们使用命令格式，如「买 0.1 ETH」。`,
+保持回复简洁友好，使用中文。
+注意：不要讨论加密货币、代币、交易等金融话题，如果用户问到，引导他们访问官网了解更多。`,
       });
     }
 
@@ -350,10 +333,8 @@ export class MessageHandler {
 
 📝 快捷命令:
 • 余额 - 查看积分余额
-• 记录 - 查看交易记录
-• 行情 BTC - 查看代币价格
-• 买 0.1 ETH - 买入代币
-• 卖 100 DOGE - 卖出代币
+• 记录 - 查看消费记录
+• 充值 - 获取充值链接
 
 💬 自然对话:
 直接发消息跟我聊天，我会尽力帮助你！
@@ -362,9 +343,8 @@ export class MessageHandler {
 • 新用户赠送 100 积分
 • 1 积分 = ¥0.01
 • AI 对话消耗 1-5 积分/次
-• 交易手续费 0.1%
 
-📊 支持的代币:
-BTC, ETH, SOL, BNB, DOGE, USDT, USDC`;
+🌐 更多功能:
+访问官网解锁完整服务`;
   }
 }
